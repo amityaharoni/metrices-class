@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "metrices-class"
+version = "0.1.0"
+description = "Evaluate the metrices for each graph in each dataset, produce a dataset with the given values"
+authors = ["Amity Aharoni <aharoni.amittai@gmail.com>"]
+readme = "README.md"
+packages = [{include = "metrices_class"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
