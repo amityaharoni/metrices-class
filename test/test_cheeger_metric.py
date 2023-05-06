@@ -1,38 +1,34 @@
-# Test cheeger metric
-#
-import torch
-from torch_geometric.data import Data
+# Description: Test cheeger metric
 from metrices.cheeger_metric import CheegerMetric
+import numpy as np
+import pytest
+from torch_geometric.data import Data, Batch
+import torch
 
-edge_index = torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7],
-                            [1, 2, 3, 4, 5, 6, 7, 0]], dtype=torch.long)
-x = torch.tensor([[0, 1], [1, 0], [1, 1], [0, 0], [0, 1], [1, 0], [1, 1], [0, 0]], dtype=torch.float)
-test_graph = Data(x=x, edge_index=edge_index)
+def test_CheegerMetric_call():
+    # Create two simple graphs
+    edge_index1 = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long)
+    edge_attr1 = torch.tensor([1, 2, 3, 4], dtype=torch.float)
+    graph1 = Data(edge_index=edge_index1, edge_attr=edge_attr1, num_nodes=3)
 
-def test_get_relevant_sets():
-    # Compute cheeger metric
+    edge_index2 = torch.tensor([[0, 1, 2], [1, 0, 1]], dtype=torch.long)
+    edge_attr2 = torch.tensor([1, 2, 3], dtype=torch.float)
+    graph2 = Data(edge_index=edge_index2, edge_attr=edge_attr2, num_nodes=3)
+
+    # Create a batch of the two graphs
+    batch = Batch.from_data_list([graph1, graph2])
+
+    # Compute the Cheeger score using the CheegerMetric class
     cheeger_metric = CheegerMetric()
-    relevant_sets = cheeger_metric.get_relevant_sets(test_graph.x.shape[0])
-    assert len(relevant_sets) == 4
-    assert len(relevant_sets[0]) == 1
-    assert len(relevant_sets[1]) == 8
-    assert len(relevant_sets[2]) == 28
-    assert len(relevant_sets[3]) == 56
+    scores = cheeger_metric(batch)
 
-def test_combinations():
-    # Compute cheeger metric
-    cheeger_metric = CheegerMetric()
-    combinations = cheeger_metric.combinations(range(test_graph.x.shape[0]), 2)
-    assert len(list(combinations)) == 28
+    # Check that the output has the correct length
+    assert len(scores) == 2
 
-def test_compute_edge_boundary():
-    # Compute cheeger metric
-    cheeger_metric = CheegerMetric()
-    edge_boundary = cheeger_metric._compute_edge_boundary(test_graph, test_graph.edge_index.t())
-    assert edge_boundary == 8
-
-def test_cheeger_metric():
-    # Compute cheeger metric
-    cheeger_metric = CheegerMetric()
-    cheeger = cheeger_metric.get_graph_value(test_graph)
-    assert cheeger == 1.0
+    # Check that the output values are correct
+    # Compute the Cheeger score manually for each graph
+    score1 = 4 * cheeger_metric._compute_lambda_1(graph1)
+    score2 = 4 * cheeger_metric._compute_lambda_1(graph2)
+    # Check that the computed scores match the output
+    assert scores[0] == pytest.approx(score1)
+    assert scores[1] == pytest.approx(score2)

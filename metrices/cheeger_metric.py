@@ -1,70 +1,60 @@
+from torch_geometric.data import Data
+from torch_geometric.data.datapipes import functional_transform
+from torch_geometric.transforms import BaseTransform
+from torch_geometric.utils import get_laplacian, to_scipy_sparse_matrix
+from scipy.sparse.linalg import eigs, eigsh
+
 class CheegerMetric():
-    def __init__(self, name='cheegr'):
-        super().__init__(name)
+    def _compute_lambda_1(self, graph, normalization='sym', is_undirected=True):
+        # Compute the smallest non-zero eigenvalue of the normalized Laplacian matrix
+        # :param graph: torch_geometric.data.Data object
+        # :return: lambda_1
+        # The normalized Laplacian matrix is defined as:
+        # L = I - D^(-1/2) * A * D^(-1/2)
+        edge_weight = graph.edge_attr
+        # If edge weights are not specified, set them to 1
+        if edge_weight is not None and edge_weight.numel() != graph.num_edges:
+            edge_weight = None
 
-    # def _compute(self, y_true, y_pred):
-    #     return cheeger_score(y_true, y_pred)
+        # Compute the normalized Laplacian matrix
+        edge_index, edge_weight = get_laplacian(graph.edge_index, 
+                                                edge_weight, normalization=normalization, num_nodes=graph.num_nodes)
+        # Convert to scipy sparse matrix
+        L = to_scipy_sparse_matrix(edge_index, edge_weight, graph.num_nodes)
+        # Compute the eigenvalues
+        # If the graph is undirected, the eigenvalues are real and the computation is faster, so use eigsh
+        if is_undirected and normalization != 'rw':
+            eig_fn = eigsh
+        # If the graph is directed, the eigenvalues are complex and the computation is slower, so use eigs
+        else:
+            eig_fn = eigs
+        # Compute the eigenvalues. 'SM' means smallest magnitude
+        eigenvalues = eig_fn(L.toarray(),
+                            k=4, which='SM',
+                            return_eigenvectors=False)
+        # Return the smallest non-zero eigenvalue
+        return eigenvalues[0]
     
-    def _compute_edge_boundary(self, sub_graph, graph_edges):
-        # :param sub_graph: list of vertices
-        # :param graph_edges: list of edges
-        # :return: edge boundary
-        sub_graph_edges = []
-        edge_boundary = 0
-        for edge in graph_edges:
-            if edge[0] in sub_graph and edge[1] not in sub_graph or edge[0] not in sub_graph and edge[1] in sub_graph:
-                edge_boundary += 1
-        return edge_boundary
-    
-    def get_graph_value(self, graph):
-        # Input is a torch_geometric.data.Data object
+    def get_graph_value(self, graph, normalization='sym', is_undirected=True):
         # Compute the metric for a single graph
-        # Compute the edge boundary for the graph
-        edges = graph.edge_index.t()
-        vertices = graph.x.shape[0]
-        # Compute powerset of vertices
-        relevant_sets = self.get_relevant_sets(vertices)
-        # Compute the edge boundary for each subgraph
-        edge_boundary = []
-        for sub_graph in relevant_sets:
-            edge_boundary.append(self._compute_edge_boundary(graph, sub_graph, edges))
-        # Compute the cheeger constant
-        cheeger = []
-        for i in range(len(edge_boundary)):
-            cheeger.append(edge_boundary[i] / len(sub_graph))
-        # Return the minimum cheeger constant
-        return min(cheeger)
-
-    def get_relevant_sets(self, iterable):
-        # powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)
-        relevant_sets = []
-        # Set size up to 0.5 * |V|
-        for i in range(int(0.5 * len(iterable))): 
-            relevant_sets.append(list(self.combinations(range(iterable), i)))
-        return relevant_sets
-
-    def combinations(self, iterable, r):
-        # combinations('ABCD', 2) --> AB AC AD BC BD CD
-        # combinations(range(4), 3) --> 012 013 023 123
-        pool = tuple(iterable)
-        n = len(pool)
-        if r > n:
-            return
-        indices = list(range(r))
-        yield tuple(pool[i] for i in indices)
-        while True:
-            for i in reversed(range(r)):
-                if indices[i] != i + n - r:
-                    break
-            else:
-                return
-            indices[i] += 1
-            for j in range(i + 1, r):
-                indices[j] = indices[j - 1] + 1
-            yield tuple(pool[i] for i in indices)
-
-    def get_average_value(self, X_test):
-        # Iterate over all graphs
-        cheegers = []
-        for i in range(len(X_test)):
-            cheegers.append(self._compute(X_test[i].y, X_test[i].pred))
+        # :param graph: torch_geometric.data.Data object
+        # :return: cheeger score
+        # Cheeger score can be computed as:
+        # h^2(G) ≈ 4 * lambda_1
+        # lambda_1 is the smallest non-zero eigenvalue of the normalized Laplacian matrix
+        lambda_1 = self._compute_lambda_1(graph, normalization=normalization, is_undirected=is_undirected)
+        return 4 * lambda_1
+    
+    def __call__(self, graphs, normalization='sym', is_undirected=True):
+        # Compute the metric for a batch of graphs, output a list of metric values
+        # :param graphs: a torch_geometric.data.Batch of torch_geometric.data.Data objects
+        # :param normalization: normalization method for the Laplacian matrix
+        # :param is_undirected: whether the graph is undirected
+        # :return: a list of cheeger scores
+        # Compute the metric for each graph in the batch
+        values = []
+        for i in range(graphs.num_graphs):
+            graph = graphs[i]
+            value = self.get_graph_value(graph, normalization=normalization, is_undirected=is_undirected)
+            values.append(value)
+        return values
