@@ -30,7 +30,7 @@ class CheegerMetric():
             eig_fn = eigs
         # Compute the eigenvalues. 'SM' means smallest magnitude
         eigenvalues = eig_fn(L.toarray(),
-                            k=4, which='SM',
+                            k=9, which='SM',
                             return_eigenvectors=False)
         # Return the smallest non-zero eigenvalue
         return eigenvalues[0]
